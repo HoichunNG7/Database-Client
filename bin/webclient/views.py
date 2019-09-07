@@ -10,7 +10,7 @@ import base64
 # 错误提示信息汇总
 existUser = {'error': 'user exists'}  # 注册输入用户已存在
 invalidParam = {'error': 'invalid parameters'}  # 参数为空或者非法
-illegalAccess = {'error': 'illegal access'}  # 非法访问,eg. wrong session_id
+illegalAccess = {'error': 'no valid session'}  # 非法访问,eg. wrong session_id
 loggedIn = {'error': 'has logged in'}  # 已处于登录状态
 nonexistentUser = {'error': 'no such a user'}  # 用户名参数为空 or 用户不存在
 typePOST = {'error': 'require POST'}  # 应为POST请求
@@ -62,6 +62,7 @@ def find_db_user(user_name, pw):  # 在数据库中寻找登录输入用户
     user = user_cursor.fetchall()
 
     user_cursor.close()
+    conn.commit()
     conn.close()
 
     if not user:  # 用户不存在
@@ -113,7 +114,7 @@ def verify_session_id(cookie):  # 校验Cookies中的session_id是否合法
     if not user:
         return False
     if user[0][1][0:half_length] == half_password:
-        return True
+        return user_name
     else:
         return False
 
@@ -177,7 +178,7 @@ def login(request):  # 登录
             new_id = create_session_id(username, password)  # 生成新的session_id
             user_info = {'user': username}
             login_response = HttpResponse(json.dumps(user_info))
-            login_response.set_cookie('session_id', new_id, expires=60*60*24)
+            login_response.set_cookie('session_id', new_id)  # 不设置过期时间
         return login_response
 
 
@@ -186,3 +187,16 @@ def logout(request):  # 注销
     # 异常处理
     if request.method == 'GET':
         return HttpResponse(json.dumps(typePOST), content_type="application/json")
+
+    cookie_id = request.COOKIES.get('session_id')
+    if not cookie_id:  # 没有Cookies
+        return HttpResponse(json.dumps(illegalAccess), content_type="application/json")
+    else:  # 有Cookies
+        if verify_session_id(cookie_id):  # Cookies有效
+            user_info = { 'user': 'nothing' }
+            user_info['user'] = verify_session_id(cookie_id)
+            logout_response = HttpResponse(json.dumps(user_info))
+            logout_response.delete_cookie('session_id')
+            return logout_response
+        else:  # Cookies无效
+            return HttpResponse(json.dumps(illegalAccess), content_type="application/json")
