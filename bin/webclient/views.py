@@ -3,6 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 import json
 import sqlite3
+import base64
 
 # 错误提示信息汇总
 existUser = {'error': 'user exists'}  # 注册输入用户已存在
@@ -22,18 +23,15 @@ Password:<input type="password" name="password" value="%s"/></br>
 def judge_user_exist(user_name, pw):  # 判断注册输入用户是否已存在
     conn = sqlite3.connect('onlineDB.db')
     user_cursor = conn.cursor()
-    # user_cursor.execute('create table if not exists user (username varchar(32) primary key, password varchar(32))')
+
     user_cursor.execute('select * from user where username=?', (user_name,))
-    # print(user_name)  # for test only
     user = user_cursor.fetchall()
-    # print(user)  # for test only
 
     # 不存在时存储当前用户
     if not user:
-        # order = 'insert into user (username, password) values (\'' + user_name + '\', \'' + pw + '\')'
-        conn = sqlite3.connect('onlineDB.db')
-        user_cursor = conn.cursor()
-        user_cursor.execute("insert into user (username, password) values ('%s','%s')" % (user_name, pw))
+        pw = base64.b64encode(pw.encode('ascii'))
+        stored_pw = pw.decode('ascii')
+        user_cursor.execute("insert into user (username, password) values ('%s','%s')" % (user_name, stored_pw))
 
     user_cursor.close()
     conn.commit()
@@ -71,4 +69,9 @@ def logon(request):  # 注册
     else:  # 无异常
         user_info = {'user': username}
         return HttpResponse(json.dumps(user_info), content_type="application/json")
+
+
+@csrf_exempt
+def login(request):  # 登录
+    pass
 
