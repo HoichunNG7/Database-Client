@@ -6,6 +6,7 @@ import http.cookies
 import json
 import sqlite3
 import base64
+import time
 
 # 错误提示信息汇总
 existUser = {'error': 'user exists'}  # 注册输入用户已存在
@@ -13,7 +14,9 @@ invalidParam = {'error': 'invalid parameters'}  # 参数为空或者非法
 illegalAccess = {'error': 'no valid session'}  # 非法访问,eg. wrong session_id
 loggedIn = {'error': 'has logged in'}  # 已处于登录状态
 nonexistentUser = {'error': 'no such a user'}  # 用户名参数为空 or 用户不存在
+requireLogin = {'error': 'please login'}  # 尚未登录
 typePOST = {'error': 'require POST'}  # 应为POST请求
+unknownRecord = {'error': 'unknown record'}  # 记录不存在/不属于当前用户
 wrongPw = {'error': 'password is wrong'}  # 密码不正确
 
 # 各接口对应网页汇总
@@ -27,6 +30,13 @@ login_page = '''<form action="/login" method="post">
 Username:<input type="text" name="username" value="%s"/></br>
 Password:<input type="password" name="password" value="%s"/></br>
 <input type="submit" value="Login"/>
+</form>
+'''
+add_record_page = '''<form action="/record/add" method="post">
+Name:<input type="text" name="name" value="%s"/></br>
+TimeStamp:<input type="text" name="timestamp" value="%s"/></br>
+Content:<input type="text" name="content" value="%s"/></br>
+<input type="submit" value="Add Record"/>
 </form>
 '''
 
@@ -200,3 +210,75 @@ def logout(request):  # 注销
             return logout_response
         else:  # Cookies无效
             return HttpResponse(json.dumps(illegalAccess), content_type="application/json")
+
+
+@csrf_exempt
+def add_record(request):  # 增加记录
+    if 'name' in request.POST:
+        name = request.POST['name']
+        timestamp = request.POST['timestamp']
+        content = request.POST['content']
+    else:
+        name = ''
+        timestamp = ''
+        content = ''
+        return HttpResponse(add_record_page % (name, timestamp, content))
+
+    # 异常处理
+    cookie_id = request.COOKIES.get('session_id')
+    if not cookie_id:  # 没有Cookies，尚未登录
+        return HttpResponse(json.dumps(requireLogin), content_type="application/json")
+    elif not name or not timestamp or not content:  # name/timestamp/content为空
+        return HttpResponse(json.dumps(invalidParam), content_type="application/json")
+    elif not timestamp.isdigit():  # timestamp不为正整数
+        return HttpResponse(json.dumps(invalidParam), content_type="application/json")
+
+    user = verify_session_id(cookie_id)
+
+    # 添加到数据库
+    conn = sqlite3.connect('onlineDB.db')
+    user_cursor = conn.cursor()
+    user_cursor.execute("insert into data (name,timestamp,content, user) values ('%s','%s','%s','%s')"
+                        % (name, timestamp, content, user))
+    conn.commit()
+    user_cursor.execute('select id from data where name=?', (name,))
+    record_id = user_cursor.fetchall()  # 获取当前记录分配id
+    user_cursor.close()
+    conn.close()
+
+    data_info = {'record_id': '1'}
+    data_info['record_id'] = record_id[0][-1]
+    return HttpResponse(json.dumps(data_info), content_type="application/json")
+
+
+@csrf_exempt
+def delete_record(request, offset):  # 删除记录
+    # 异常处理
+    cookie_id = request.COOKIES.get('session_id')
+    if not cookie_id:  # 没有Cookies，尚未登录
+        return HttpResponse(json.dumps(requireLogin), content_type="application/json")
+    elif request.method != 'POST':  # 请求方式不是POST
+        return HttpResponse(json.dumps(typePOST), content_type="application/json")
+    elif not offset.isdigit() or offset[0] == '0':  # id不是正整数
+        return HttpResponse(json.dumps(invalidParam), content_type="application/json")
+
+    user = verify_session_id(cookie_id)
+
+    # 访问数据库
+    conn = sqlite3.connect('onlineDB.db')
+    user_cursor = conn.cursor()
+    user_cursor.execute('select * from data where id=?', (int(offset),))
+    record = user_cursor.fetchall()  # 获取指定记录
+
+    if not record or record[0][-1] != user:  # 记录不存在/不属于当前用户
+        return HttpResponse(json.dumps(unknownRecord), content_type="application/json")
+
+    user_cursor.execute('delete from data where id=?', (int(offset),))
+    conn.commit()
+
+    user_cursor.close()
+    conn.close()
+
+    data_info = {'record_id': '12'}
+    data_info['record_id'] = int(offset)
+    return HttpResponse(json.dumps(data_info), content_type="application/json")

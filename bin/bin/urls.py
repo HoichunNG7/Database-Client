@@ -23,5 +23,7 @@ urlpatterns = [
     url(r'^index/', views.index),
     url(r'^logon$', views.logon),
     url(r'^login$', views.login),
-    url(r'^logout$', views.logout)
+    url(r'^logout$', views.logout),
+    url(r'^record/add$', views.add_record),
+    url(r'^record/(.+)/delete$', views.delete_record)
 ]
