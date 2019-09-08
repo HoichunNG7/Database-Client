@@ -12,6 +12,7 @@ import time
 existUser = {'error': 'user exists'}  # 注册输入用户已存在
 invalidParam = {'error': 'invalid parameters'}  # 参数为空或者非法
 illegalAccess = {'error': 'no valid session'}  # 非法访问,eg. wrong session_id
+illegalName = {'error': 'need name words'}  # URL参数'name'不存在或者为空
 loggedIn = {'error': 'has logged in'}  # 已处于登录状态
 nonexistentUser = {'error': 'no such a user'}  # 用户名参数为空 or 用户不存在
 requireLogin = {'error': 'please login'}  # 尚未登录
@@ -353,3 +354,67 @@ def update_record(request, offset):  # 修改记录
     data_info = {'record_id': '12'}
     data_info['record_id'] = int(offset)
     return HttpResponse(json.dumps(data_info), content_type="application/json")
+
+
+@csrf_exempt
+def get_record(request, offset):  # 获取记录
+    # 异常处理
+    cookie_id = request.COOKIES.get('session_id')
+    if not cookie_id:  # 没有Cookies，尚未登录
+        return HttpResponse(json.dumps(requireLogin), content_type="application/json")
+
+    user = verify_session_id(cookie_id)
+    # 访问数据库
+    conn = sqlite3.connect('onlineDB.db')
+    user_cursor = conn.cursor()
+    user_cursor.execute('select * from data where id=?', (int(offset),))
+    record = user_cursor.fetchall()  # 获取指定记录
+
+    if not record or record[0][-1] != user:  # 记录不存在/不属于当前用户
+        return HttpResponse(json.dumps(unknownRecord), content_type="application/json")
+
+    # 正常，返回当前记录信息
+    print(record)
+    data_info = {'record_id': '12'}
+    data_info['record_id'] = int(offset)
+    data_info['name'] = record[0][0]
+    data_info['content'] = record[0][1]
+    front_ten_time = int(record[0][3][0:10])
+    data_info['time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(front_ten_time)) + '.' + record[0][3][10:]
+    return HttpResponse(json.dumps(data_info), content_type="application/json")
+
+
+@csrf_exempt
+def query(request):  # 查找记录
+    # 异常处理
+    cookie_id = request.COOKIES.get('session_id')
+    if not cookie_id:  # 没有Cookies，尚未登录
+        return HttpResponse(json.dumps(requireLogin), content_type="application/json")
+
+    name = request.GET.get('name')
+    if not name:  # URL参数'name'不存在或者为空
+        return HttpResponse(json.dumps(illegalName), content_type="application/json")
+    elif not name.strip():
+        return HttpResponse(json.dumps(illegalName), content_type="application/json")
+
+    # 访问数据库
+    user = verify_session_id(cookie_id)
+    conn = sqlite3.connect('onlineDB.db')
+    user_cursor = conn.cursor()
+    user_cursor.execute('select * from data where name=? and user=?', (name, user))
+    record = user_cursor.fetchall()  # 获取指定记录
+
+    return_list = []
+    for item in record:
+        data_info = {}
+        data_info['record_id'] = int(item[2])
+        data_info['name'] = item[0]
+        data_info['content'] = item[1]
+        front_ten_time = int(item[3][0:10])
+        data_info['time'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(front_ten_time)) + '.' + item[3][10:]
+        return_list.append(data_info)
+
+    data = {'list': []}
+    data['list'] = return_list
+    return HttpResponse(json.dumps(data, sort_keys=True, indent=4,
+                                   separators=(',', ':')), content_type="application/json")

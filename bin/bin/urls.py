@@ -27,4 +27,6 @@ urlpatterns = [
     url(r'^record/add$', views.add_record),
     url(r'^record/(.+)/delete$', views.delete_record),
     url(r'^record/(.+)/update$', views.update_record),
+    url(r'^record/(.+)$', views.get_record),
+    url(r'^record/$', views.query),
 ]
