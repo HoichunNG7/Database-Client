@@ -25,5 +25,6 @@ urlpatterns = [
     url(r'^login$', views.login),
     url(r'^logout$', views.logout),
     url(r'^record/add$', views.add_record),
-    url(r'^record/(.+)/delete$', views.delete_record)
+    url(r'^record/(.+)/delete$', views.delete_record),
+    url(r'^record/(.+)/update$', views.update_record),
 ]

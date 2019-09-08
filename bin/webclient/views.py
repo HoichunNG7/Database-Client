@@ -17,6 +17,7 @@ nonexistentUser = {'error': 'no such a user'}  # 用户名参数为空 or 用户
 requireLogin = {'error': 'please login'}  # 尚未登录
 typePOST = {'error': 'require POST'}  # 应为POST请求
 unknownRecord = {'error': 'unknown record'}  # 记录不存在/不属于当前用户
+unknownField = {'error': 'unknown record field'}  # 请求正文中存在未知字段
 wrongPw = {'error': 'password is wrong'}  # 密码不正确
 
 # 各接口对应网页汇总
@@ -37,6 +38,14 @@ Name:<input type="text" name="name" value="%s"/></br>
 TimeStamp:<input type="text" name="timestamp" value="%s"/></br>
 Content:<input type="text" name="content" value="%s"/></br>
 <input type="submit" value="Add Record"/>
+</form>
+'''
+
+update_record_page = '''<form action="/record/%s/update" method="post">
+Name:<input type="text" name="name" value="%s"/></br>
+TimeStamp:<input type="text" name="timestamp" value="%s"/></br>
+Content:<input type="text" name="content" value="%s"/></br>
+<input type="submit" value="Update Record"/>
 </form>
 '''
 
@@ -278,6 +287,68 @@ def delete_record(request, offset):  # 删除记录
 
     user_cursor.close()
     conn.close()
+
+    data_info = {'record_id': '12'}
+    data_info['record_id'] = int(offset)
+    return HttpResponse(json.dumps(data_info), content_type="application/json")
+
+
+@csrf_exempt
+def update_record(request, offset):  # 修改记录
+    if 'name' in request.POST or 'timestamp' in request.POST or 'content' in request.POST:
+        if 'name' in request.POST:
+            name = request.POST['name']
+        else:
+            name = ''
+        if 'timestamp' in request.POST:
+            timestamp = request.POST['timestamp']
+        else:
+            timestamp = ''
+        if 'content' in request.POST:
+            content = request.POST['content']
+        else:
+            content = ''
+    else:
+        name = ''
+        timestamp = ''
+        content = ''
+        return HttpResponse(update_record_page % (offset, name, timestamp, content))
+
+    # 异常处理
+    cookie_id = request.COOKIES.get('session_id')
+    if not cookie_id:  # 没有Cookies，尚未登录
+        return HttpResponse(json.dumps(requireLogin), content_type="application/json")
+    elif request.method != 'POST':  # 请求方式不是POST
+        return HttpResponse(json.dumps(typePOST), content_type="application/json")
+    elif not offset.isdigit() or offset[0] == '0':  # id不是正整数
+        return HttpResponse(json.dumps(invalidParam), content_type="application/json")
+
+    user = verify_session_id(cookie_id)
+
+    # 访问数据库
+    conn = sqlite3.connect('onlineDB.db')
+    user_cursor = conn.cursor()
+    user_cursor.execute('select * from data where id=?', (int(offset),))
+    record = user_cursor.fetchall()  # 获取指定记录
+
+    if not record or record[0][-1] != user:  # 记录不存在/不属于当前用户
+        return HttpResponse(json.dumps(unknownRecord), content_type="application/json")
+
+    if name:
+        user_cursor.execute("update data set name = '%s' where id = %d" % (name, int(offset)))
+    if timestamp:
+        user_cursor.execute("update data set timestamp = '%s' where id = %d" % (timestamp, int(offset)))
+    if content:
+        user_cursor.execute("update data set content = '%s' where id = %d" % (content, int(offset)))
+
+    conn.commit()
+
+    user_cursor.close()
+    conn.close()
+
+    for key in request.POST:
+        if key not in ('name', 'timestamp', 'content'):  # 请求正文中存在未知字段
+            return HttpResponse(json.dumps(unknownField), content_type="application/json")
 
     data_info = {'record_id': '12'}
     data_info['record_id'] = int(offset)
